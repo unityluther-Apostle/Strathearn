@@ -1,0 +1,6 @@
+nicegui
+bcrypt
+requests
+polars
+fastapi
+starlette
