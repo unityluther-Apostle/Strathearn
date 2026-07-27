@@ -6,33 +6,45 @@ import lower
 from insert import insert
 import sqlite3
 from datetime import datetime
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import RedirectResponse
+import uuid
 
-# Define the shared database constant used across the application
+# Define the single shared database constant used across the application
 DB = 'School_Results_Database.db'
+
+# Ensure database tables handle single-device session tracking columns using 'Users'
+def init_db():
+    with sqlite3.connect(DB) as conn:
+        cursor = conn.cursor()
+        # Ensure activity logs table exists
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT, 
+                timestamp TEXT,
+                status TEXT
+            )
+        ''')
+        # Check if Users table needs session column (handles existing databases gracefully)
+        cursor.execute("PRAGMA table_info(Users)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'current_session_id' not in columns:
+            try:
+                cursor.execute("ALTER TABLE Users ADD COLUMN current_session_id TEXT")
+            except Exception:
+                pass
+        conn.commit()
+
+init_db()
 
 # Function to record user login events and activity status in the database
 def update_login_activity(username, status='Active'):
     try:
         with sqlite3.connect(DB) as conn:
             cursor = conn.cursor()
-            # Ensure the activity logs table exists
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS activity_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT, 
-                    timestamp TEXT,
-                    status TEXT
-                )
-            ''')
-            # If a new active login happens, mark previous active sessions as inactive
             if status == 'Active':
                 cursor.execute("UPDATE activity_logs SET status = 'Inactive' WHERE status = 'Active'")
             
             current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            # Insert the new login activity record
             cursor.execute('''
                 INSERT INTO activity_logs (username, timestamp, status) 
                 VALUES (?, ?, ?)
@@ -40,21 +52,6 @@ def update_login_activity(username, status='Active'):
             conn.commit()
     except Exception as e:
         print(f"Activity log error: {e}")
-
-# Custom Security Middleware to handle route protection and cache control headers
-class SecurityMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        response = await call_next(request)
-        # Prevent browser caching of protected views
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-        
-        # Protect specific backend/dashboard paths from unauthenticated access
-        if request.url.path in ['/home', '/teacher', '/insert']:
-            if not app.storage.user.get('logged_in'):
-                return RedirectResponse('/login')
-        return response
 
 # Global application state variables
 app_state = {
@@ -74,23 +71,22 @@ ADMIN_ACCOUNTS = {
 
 # Main UI layout and logic for the Authentication Portal (Login, Register, Reset)
 def login_page():
-    # Use fixed positioning or full viewport dimensions to eliminate scrolling white spaces
+    # Clear out any existing user storage when hitting the login page fresh
+    if app.storage.user.get('logged_in'):
+        app.storage.user.clear()
+
     with ui.row().classes('fixed inset-0 w-screen h-screen m-0 p-0 no-wrap bg-gradient-to-br from-slate-900 via-slate-800 to-[#500000] justify-center items-center overflow-hidden'):
         
-        # Centered container for card and viewport-level footer attribution
         with ui.column().classes('items-center gap-4 relative w-full h-full justify-center'):
             
-            # Centered glassmorphism-inspired container card
             with ui.card().classes('w-[460px] p-10 bg-white/95 backdrop-blur-xl shadow-2xl rounded-[28px] border border-white/20').tight():
                 
-                # Header Branding
                 with ui.column().classes('w-full items-center mb-8'):
                     with ui.row().classes('w-14 h-14 bg-[#800000]/10 rounded-2xl justify-center items-center mb-3 shadow-inner overflow-hidden'):
                         ui.image('badge.jpeg').classes('w-full h-full object-cover')
-                    ui.label('Strathearn Portal').classes('text-2xl font-extrabold tracking-tight text-slate-800 text-center')
-                    ui.label('Report Management System').classes('text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider')
+                    ui.label('Institutional Portal').classes('text-2xl font-extrabold tracking-tight text-slate-800 text-center')
+                    ui.label('Secure Access Management').classes('text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider')
 
-                # Navigation tabs switching between Login, Registration, and Password Reset
                 with ui.tabs().classes('w-full bg-slate-100/80 rounded-xl p-1 shadow-inner') as tabs:
                     login_tab = ui.tab('login').classes('flex-1 text-xs font-semibold rounded-lg tracking-wide')
                     register_tab = ui.tab('Register').classes('flex-1 text-xs font-semibold rounded-lg tracking-wide')
@@ -109,28 +105,38 @@ def login_page():
                             username = username_input.value.strip()
                             password = password_input.value
                             
-                            # Validate that inputs are not empty
                             if not username or not password:
                                 ui.notify('Please fill the fields', type='warning', position='top')
                                 return
 
-                            # Show loading state
                             login_btn.disable()
                             login_spinner.classes(remove='hidden')
 
                             try:
-                                # Authenticate user against database records
-                                if verify_user(username, password): 
+                                is_valid_admin = (username in ADMIN_ACCOUNTS and ADMIN_ACCOUNTS[username] == password)
+                                
+                                if is_valid_admin or verify_user(username, password): 
+                                    new_session_id = str(uuid.uuid4())
+                                    
+                                    with sqlite3.connect(DB) as conn:
+                                        cursor = conn.cursor()
+                                        cursor.execute("SELECT Username FROM Users WHERE Username = ?", (username,))
+                                        if not cursor.fetchone() and is_valid_admin:
+                                            cursor.execute("INSERT INTO Users (Username, Password) VALUES (?, ?)", (username, password))
+                                        
+                                        cursor.execute("UPDATE Users SET current_session_id = ? WHERE Username = ?", (new_session_id, username))
+                                        conn.commit()
+
                                     app.storage.user['logged_in'] = True
                                     app.storage.user['current_user'] = username
                                     app.storage.user['username'] = username
                                     app.storage.user['name'] = username
-                                    update_login_activity(username, 'Active')
+                                    app.storage.user['session_id'] = new_session_id
                                     
+                                    update_login_activity(username, 'Active')
                                     ui.notify('Login successful!', type='positive', position='top')
                                     
-                                    # Role-based Routing (Admins go to /home, teachers/others go to /teacher)
-                                    if username in ADMIN_ACCOUNTS and ADMIN_ACCOUNTS[username] == password:
+                                    if username in ADMIN_ACCOUNTS:
                                         ui.navigate.to('/home')
                                     else:
                                         ui.navigate.to('/teacher')
@@ -205,7 +211,6 @@ def login_page():
 
                         ui.link('Back to Login', '#').on('click', lambda: tabs.set_value(login_tab)).classes('text-xs font-semibold text-slate-400 hover:text-[#800000] text-center w-full mt-3')
 
-            # Professional SaaS viewport-level footer pinned at the bottom-center
             with ui.row().classes('absolute bottom-4 left-0 right-0 justify-center items-center pointer-events-none'):
                 ui.label('Designed by Apostle').classes('text-xs font-medium text-slate-400/80 tracking-wider')
 
@@ -219,9 +224,7 @@ pages = ui.sub_pages(routes={
     '/lower': lower,
 })
 
-# Force the router container to occupy full width
 pages.classes('w-full') 
 
-# Run the NiceGUI server instance
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(title="School Report System", storage_secret='some_long_random_string_here')
