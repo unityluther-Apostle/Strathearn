@@ -425,6 +425,7 @@ def view_system_logs_content(logs_tab):
                 ui.button('Force Logout', icon='logout', on_click=force_logout_user).props('dense unelevated color="orange"').classes('rounded-xl text-white')
 
             refresh_activity_table()
+
 # Query database records based on selected class, year, and term filters for Upper Primary
 def refresh_table_data(class_filter='All', year_filter='', term_filter='All'):
     global student_table, all_records
