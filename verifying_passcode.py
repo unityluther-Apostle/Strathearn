@@ -1,27 +1,12 @@
-import os
-import libsql
+import sqlite3
 import bcrypt
 
-# Retrieve cloud database credentials from environment variables (fallback to local file if testing offline)
-LIBSQL_URL = os.getenv("LIBSQL_URL", "file:School_Results_Database.db")
-LIBSQL_AUTH_TOKEN = os.getenv("LIBSQL_AUTH_TOKEN", "")
-
-def get_db_connection():
-    if LIBSQL_URL.startswith("file:"):
-        return libsql.connect("School_Results_Database.db")
-    else:
-        return libsql.connect(
-            database="School_Results_Database.db",
-            sync_url=LIBSQL_URL,
-            auth_token=LIBSQL_AUTH_TOKEN
-        )
+passkey = "School_Results_Database.db"
 
 Table = {
     "Users": '''Username TEXT UNIQUE, Password BLOB, Email TEXT UNIQUE, current_session_id TEXT'''
 }
-
-# Initialize database and tables using Turso/libSQL connection
-conn = get_db_connection()
+conn = sqlite3.connect(passkey)
 cursor = conn.cursor()
 
 cursor.execute("PRAGMA foreign_keys = ON;")
@@ -43,8 +28,8 @@ conn.commit()
 conn.close()
 
 def fetch_tables(table_name):
-    conn = get_db_connection()
-    conn.row_factory = libsql.Row
+    conn = sqlite3.connect(passkey)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     query = f"SELECT * FROM {table_name};"
@@ -60,7 +45,7 @@ print(f"The tables created are: {len(Table)}")
 def add_user(username, plain_password, email):
     password_bytes = plain_password.encode('utf-8')
     hashed_password = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
-    conn = get_db_connection()
+    conn = sqlite3.connect(passkey)
     cursor = conn.cursor()
 
     try:
@@ -69,13 +54,15 @@ def add_user(username, plain_password, email):
         )
         conn.commit()
         print(f"User {username} added successfully!!!!")
-    except Exception as e: # Catching general exception since cloud drivers might handle integrity constraints slightly differently
-        print(f"Registration Failed: Username or Email already exists or database error. {e}")
+    except sqlite3.IntegrityError as e:
+        print(f"Registration Failed: Username or Email already exists. {e}")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
     finally:
         conn.close()
 
 def verify_user(username, plain_password):
-    conn = get_db_connection()
+    conn = sqlite3.connect(passkey)
     cursor = conn.cursor()
     
     try:
@@ -96,7 +83,7 @@ def verify_user(username, plain_password):
             print("Verification Failed: Invalid password.")
             return False
             
-    except Exception as e:
+    except sqlite3.Error as e:
         print(f"Database error during verification: {e}")
         return False
     finally:
@@ -105,7 +92,7 @@ def verify_user(username, plain_password):
 def reset_password(username, email, new_plain_password):
     password_bytes = new_plain_password.encode('utf-8')
     hashed_password = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
-    conn = get_db_connection()
+    conn = sqlite3.connect(passkey)
     cursor = conn.cursor()
 
     try:
