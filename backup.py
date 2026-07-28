@@ -1,13 +1,15 @@
 import sqlite3
 import smtplib
 import os
+import time
+import threading
 from email.message import EmailMessage
 
 # Configuration
 DB_FILE = 'School_Results_Database.db'
 BACKUP_FILE = 'School_Results_Backup.db'
-SENDER_EMAIL = "your_email@gmail.com"  # Use a dedicated sender account
-PASSWORD = "your_app_password"         # Use an App Password, NOT your main password
+SENDER_EMAIL = "Postywalker0@gmail.com"  # Use a dedicated sender account
+PASSWORD = "sebuliba"       # Use an App Password, NOT your main password
 RECIPIENT = "unityluther@gmail.com"
 
 def backup_db():
@@ -24,6 +26,7 @@ def send_email(file_path):
     msg['Subject'] = 'School Database Automated Backup'
     msg['From'] = SENDER_EMAIL
     msg['To'] = RECIPIENT
+    msg['set_content'] = 'Attached is the latest automated database backup.' # corrected to set_content method below
     msg.set_content('Attached is the latest automated database backup.')
 
     with open(file_path, 'rb') as f:
@@ -33,6 +36,24 @@ def send_email(file_path):
         smtp.login(SENDER_EMAIL, PASSWORD)
         smtp.send_message(msg)
 
+def run_backup_job():
+    try:
+        backup_file = backup_db()
+        send_email(backup_file)
+        print("Automatic 12-hour database backup and email sent successfully.")
+    except Exception as e:
+        print(f"Backup failed: {e}")
+
+def background_backup_loop():
+    while True:
+        # Wait for 12 hours (12 hours * 60 minutes * 60 seconds)
+        time.sleep(12 * 60 * 60)
+        run_backup_job()
+
 if __name__ == "__main__":
-    backup_file = backup_db()
-    send_email(backup_file)
+    # Optional: Run immediately on startup once, or comment out if you only want to wait for the first 12-hour interval
+    run_backup_job()
+
+    # Start the background backup thread as a daemon so it runs continuously without blocking app shutdown
+    backup_thread = threading.Thread(target=background_backup_loop, daemon=True)
+    backup_thread.start()
