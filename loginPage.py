@@ -1,32 +1,19 @@
-import os
-import libsql
 from verifying_passcode import verify_user, add_user, reset_password
 from nicegui import ui, app
 import school_home_page
 import teacher_page
 import lower
 from insert import insert
+import sqlite3
 from datetime import datetime
 import uuid
 
-# Retrieve cloud database credentials from environment variables (fallback to local if offline)
-LIBSQL_URL = os.getenv("LIBSQL_URL", "file:School_Results_Database.db")
-LIBSQL_AUTH_TOKEN = os.getenv("LIBSQL_AUTH_TOKEN", "")
-
-# Define a shared helper function for libSQL cloud connections
-def get_db_connection():
-    if LIBSQL_URL.startswith("file:"):
-        return libsql.connect("School_Results_Database.db")
-    else:
-        return libsql.connect(
-            database="School_Results_Database.db",
-            sync_url=LIBSQL_URL,
-            auth_token=LIBSQL_AUTH_TOKEN
-        )
+# Define the single shared database constant used across the application
+DB = 'School_Results_Database.db'
 
 # Ensure database tables handle single-device session tracking columns using 'Users'
 def init_db():
-    with get_db_connection() as conn:
+    with sqlite3.connect(DB) as conn:
         cursor = conn.cursor()
         # Ensure activity logs table exists
         cursor.execute('''
@@ -52,7 +39,7 @@ init_db()
 # Function to record user login events and activity status in the database
 def update_login_activity(username, status='Active'):
     try:
-        with get_db_connection() as conn:
+        with sqlite3.connect(DB) as conn:
             cursor = conn.cursor()
             if status == 'Active':
                 cursor.execute("UPDATE activity_logs SET status = 'Inactive' WHERE status = 'Active'")
@@ -131,7 +118,7 @@ def login_page():
                                 if is_valid_admin or verify_user(username, password): 
                                     new_session_id = str(uuid.uuid4())
                                     
-                                    with get_db_connection() as conn:
+                                    with sqlite3.connect(DB) as conn:
                                         cursor = conn.cursor()
                                         cursor.execute("SELECT Username FROM Users WHERE Username = ?", (username,))
                                         if not cursor.fetchone() and is_valid_admin:
