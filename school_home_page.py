@@ -1,4 +1,3 @@
-import libsql
 import sqlite3
 import io
 from datetime import datetime, timedelta
@@ -1498,4 +1497,3 @@ def update_all_ranks():
             for row in df.to_dicts():
                 cursor.execute("UPDATE academic_records SET Rank = ? WHERE id = ?", (str(row['Rank']), row['id']))
             conn.commit()
-```[cite: 7]
