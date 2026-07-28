@@ -6,15 +6,15 @@ import threading
 from email.message import EmailMessage
 
 # Configuration
-DB_FILE = 'School_Results_Database.db'
+DB = 'School_Results_Database.db'
 BACKUP_FILE = 'School_Results_Backup.db'
-SENDER_EMAIL = "Postywalker0@gmail.com"  # Use a dedicated sender account
-PASSWORD = "sebuliba"       # Use an App Password, NOT your main password
+SENDER_EMAIL = "Postywalker@gmail.com"  # Use a dedicated sender account
+PASSWORD = "ba"        # Use an App Password, NOT your main password
 RECIPIENT = "unityluther@gmail.com"
 
 def backup_db():
     # 1. Create a safe binary copy of the database
-    source = sqlite3.connect(DB_FILE)
+    source = sqlite3.connect(DB)
     backup = sqlite3.connect(BACKUP_FILE)
     source.backup(backup)
     backup.close()
@@ -26,7 +26,6 @@ def send_email(file_path):
     msg['Subject'] = 'School Database Automated Backup'
     msg['From'] = SENDER_EMAIL
     msg['To'] = RECIPIENT
-    msg['set_content'] = 'Attached is the latest automated database backup.' # corrected to set_content method below
     msg.set_content('Attached is the latest automated database backup.')
 
     with open(file_path, 'rb') as f:
@@ -40,9 +39,14 @@ def run_backup_job():
     try:
         backup_file = backup_db()
         send_email(backup_file)
-        print("Automatic 12-hour database backup and email sent successfully.")
+        print("Database backup and email sent successfully.")
     except Exception as e:
         print(f"Backup failed: {e}")
+
+def trigger_immediate_backup():
+    """Call this function right after saving or updating critical grades to backup immediately in the background."""
+    print("Critical data updated! Triggering immediate background backup...")
+    threading.Thread(target=run_backup_job, daemon=True).start()
 
 def background_backup_loop():
     while True:
