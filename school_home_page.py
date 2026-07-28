@@ -96,15 +96,21 @@ def init_db_and_load_records():
         # Create activity logs tracking table
         cursor.execute('CREATE TABLE IF NOT EXISTS activity_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, timestamp TEXT, status TEXT)')
         
-        # Ensure lower primary table has year and term columns safely
-        try:
-            cursor.execute(f"ALTER TABLE lower_primary_results ADD COLUMN year TEXT DEFAULT '{current_year_str}'")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN term TEXT")
-        except sqlite3.OperationalError:
-            pass
+        # Safely check and add columns to lower_primary_results using PRAGMA table_info
+        cursor.execute("PRAGMA table_info(lower_primary_results)")
+        existing_columns = [row[1] for row in cursor.fetchall()]
+
+        if 'year' not in existing_columns:
+            try:
+                cursor.execute(f"ALTER TABLE lower_primary_results ADD COLUMN year TEXT DEFAULT '{current_year_str}'")
+            except sqlite3.OperationalError:
+                pass
+
+        if 'term' not in existing_columns:
+            try:
+                cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN term TEXT")
+            except sqlite3.OperationalError:
+                pass
             
         # Now safe to update lower primary results
         cursor.execute(f"UPDATE lower_primary_results SET year = '{current_year_str}' WHERE year IS NULL OR year = ''")
