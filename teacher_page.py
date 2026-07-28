@@ -4,14 +4,17 @@ import sqlite3
 import insert
 import lower
 from nicegui import app, ui
+import os
 
 # --- DATABASE CONFIG ---
 DB = 'School_Results_Database.db'
 
 
-# --- INITIALIZE CHAT DATABASE TABLE ---
-def init_chat_db():
+# --- INITIALIZE DATABASES & TABLES ---
+def init_databases():
+  print(f'Connecting to database at: {os.path.abspath(DB)}')
   with sqlite3.connect(DB) as conn:
+    # 1. Initialize Staff Chat Table
     conn.execute('''
             CREATE TABLE IF NOT EXISTS staff_chat (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,8 +24,41 @@ def init_chat_db():
             )
         ''')
 
+    # 2. Initialize Lower Primary Results Table (Must exist before updates)
+    conn.execute('''
+            CREATE TABLE IF NOT EXISTS lower_primary_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payment_code TEXT,
+                pupil_name TEXT,
+                class_level TEXT,
+                term TEXT,
+                year TEXT,
+                literacy_i REAL,
+                literacy_ii REAL,
+                reading REAL,
+                luganda REAL,
+                mathematics REAL,
+                english REAL,
+                social_studies REAL,
+                science REAL,
+                re_religious_education REAL,
+                class_teacher TEXT
+            )
+        ''')
 
-init_chat_db()
+    # 3. Commit table creation FIRST so the table actually exists in the DB file
+    conn.commit()
+
+    # 4. Safe to populate/update year column now
+    current_year_str = str(datetime.now().year)
+    conn.execute(
+        f"UPDATE lower_primary_results SET year = '{current_year_str}' WHERE"
+        " year IS NULL OR year = ''"
+    )
+    conn.commit()
+
+
+init_databases()
 
 
 # --- 1. DYNAMIC ANALYTICS LOGIC ---
@@ -235,18 +271,41 @@ def get_class_analytics(selected_class, level_type):
 
 # --- 2. EDIT RECORD LOGIC ---
 def edit_record(record, on_save):
-  with ui.dialog() as dialog, ui.card().classes('w-[700px] p-8 rounded-3xl shadow-2xl border border-stone-100'):
-    ui.label(f"Edit Record: {record['Name']}").classes('text-2xl font-bold mb-4 text-[#1E4D2B]')
+  with (
+      ui.dialog() as dialog,
+      ui.card().classes(
+          'w-[700px] p-8 rounded-3xl shadow-2xl border border-stone-100'
+      ),
+  ):
+    ui.label(f"Edit Record: {record['Name']}").classes(
+        'text-2xl font-bold mb-4 text-[#1E4D2B]'
+    )
     with ui.grid(columns=2).classes('w-full gap-4'):
       fields = {
-          'Name': ui.input('Name', value=record['Name']).classes('bg-stone-50 rounded-xl'),
-          'Admin': ui.input('Admin', value=record['Admin']).classes('bg-stone-50 rounded-xl'),
-          'Class': ui.input('Class', value=record['Class']).classes('bg-stone-50 rounded-xl'),
-          'Maths': ui.number('Maths', value=record['Maths']).classes('bg-stone-50 rounded-xl'),
-          'English': ui.number('English', value=record['English']).classes('bg-stone-50 rounded-xl'),
-          'SST': ui.number('SST', value=record['SST']).classes('bg-stone-50 rounded-xl'),
-          'Science': ui.number('Science', value=record['Science']).classes('bg-stone-50 rounded-xl'),
-          'Remarks': ui.input('Remarks', value=record['Remarks']).classes('bg-stone-50 rounded-xl'),
+          'Name': ui.input('Name', value=record['Name']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'Admin': ui.input('Admin', value=record['Admin']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'Class': ui.input('Class', value=record['Class']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'Maths': ui.number('Maths', value=record['Maths']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'English': ui.number('English', value=record['English']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'SST': ui.number('SST', value=record['SST']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'Science': ui.number('Science', value=record['Science']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'Remarks': ui.input('Remarks', value=record['Remarks']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
       }
 
     def save():
@@ -273,14 +332,20 @@ def edit_record(record, on_save):
       on_save()
 
     ui.button('Save Changes', on_click=save).classes(
-        'w-full mt-6 bg-[#1E4D2B] text-white py-3 rounded-2xl font-bold shadow-md hover:bg-emerald-900 transition-colors'
+        'w-full mt-6 bg-[#1E4D2B] text-white py-3 rounded-2xl font-bold'
+        ' shadow-md hover:bg-emerald-900 transition-colors'
     )
   dialog.open()
 
 
 # --- EDIT LOWER PRIMARY RECORD LOGIC ---
 def edit_lower_record(record, on_save):
-  with ui.dialog() as dialog, ui.card().classes('w-[700px] p-8 rounded-3xl shadow-2xl border border-stone-100'):
+  with (
+      ui.dialog() as dialog,
+      ui.card().classes(
+          'w-[700px] p-8 rounded-3xl shadow-2xl border border-stone-100'
+      ),
+  ):
     ui.label(f"Edit Lower Primary Record: {record['pupil_name']}").classes(
         'text-2xl font-bold mb-4 text-[#1E4D2B]'
     )
@@ -289,28 +354,55 @@ def edit_lower_record(record, on_save):
           'payment_code': ui.input(
               'Payment Code', value=record.get('payment_code', '')
           ).classes('bg-stone-50 rounded-xl'),
-          'pupil_name': ui.input('Pupil Name', value=record['pupil_name']).classes('bg-stone-50 rounded-xl'),
-          'class_level': ui.input('Class', value=record['class_level']).classes('bg-stone-50 rounded-xl'),
-          'term': ui.input('Term', value=record['term']).classes('bg-stone-50 rounded-xl'),
-          'literacy_i': ui.number('Lit I', value=record['literacy_i']).classes('bg-stone-50 rounded-xl'),
-          'literacy_ii': ui.number('Lit II', value=record['literacy_ii']).classes('bg-stone-50 rounded-xl'),
-          'reading': ui.number('Reading', value=record['reading']).classes('bg-stone-50 rounded-xl'),
-          'luganda': ui.number('Luganda', value=record['luganda']).classes('bg-stone-50 rounded-xl'),
-          'mathematics': ui.number('Maths', value=record['mathematics']).classes('bg-stone-50 rounded-xl'),
-          'english': ui.number('English', value=record['english']).classes('bg-stone-50 rounded-xl'),
-          'social_studies': ui.number('S.S.T', value=record['social_studies']).classes('bg-stone-50 rounded-xl'),
-          'science': ui.number('Science', value=record['science']).classes('bg-stone-50 rounded-xl'),
+          'pupil_name': ui.input(
+              'Pupil Name', value=record['pupil_name']
+          ).classes('bg-stone-50 rounded-xl'),
+          'class_level': ui.input(
+              'Class', value=record['class_level']
+          ).classes('bg-stone-50 rounded-xl'),
+          'term': ui.input('Term', value=record['term']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'year': ui.input('Year', value=record.get('year', '')).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'literacy_i': ui.number(
+              'Lit I', value=record['literacy_i']
+          ).classes('bg-stone-50 rounded-xl'),
+          'literacy_ii': ui.number(
+              'Lit II', value=record['literacy_ii']
+          ).classes('bg-stone-50 rounded-xl'),
+          'reading': ui.number('Reading', value=record['reading']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'luganda': ui.number('Luganda', value=record['luganda']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'mathematics': ui.number(
+              'Maths', value=record['mathematics']
+          ).classes('bg-stone-50 rounded-xl'),
+          'english': ui.number('English', value=record['english']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
+          'social_studies': ui.number(
+              'S.S.T', value=record['social_studies']
+          ).classes('bg-stone-50 rounded-xl'),
+          'science': ui.number('Science', value=record['science']).classes(
+              'bg-stone-50 rounded-xl'
+          ),
           're_religious_education': ui.number(
               'R.E', value=record['re_religious_education']
           ).classes('bg-stone-50 rounded-xl'),
-          'class_teacher': ui.input('Teacher', value=record['class_teacher']).classes('bg-stone-50 rounded-xl'),
+          'class_teacher': ui.input(
+              'Teacher', value=record['class_teacher']
+          ).classes('bg-stone-50 rounded-xl'),
       }
 
     def save():
       with sqlite3.connect(DB) as conn:
         conn.execute(
             '''UPDATE lower_primary_results SET 
-                    payment_code=?, pupil_name=?, class_level=?, term=?, literacy_i=?, literacy_ii=?, 
+                    payment_code=?, pupil_name=?, class_level=?, term=?, year=?, literacy_i=?, literacy_ii=?, 
                     reading=?, luganda=?, mathematics=?, english=?, social_studies=?, 
                     science=?, re_religious_education=?, class_teacher=? WHERE id=?''',
             (
@@ -318,6 +410,7 @@ def edit_lower_record(record, on_save):
                 fields['pupil_name'].value,
                 fields['class_level'].value,
                 fields['term'].value,
+                fields['year'].value,
                 fields['literacy_i'].value,
                 fields['literacy_ii'].value,
                 fields['reading'].value,
@@ -337,7 +430,8 @@ def edit_lower_record(record, on_save):
       on_save()
 
     ui.button('Save Changes', on_click=save).classes(
-        'w-full mt-6 bg-[#1E4D2B] text-white py-3 rounded-2xl font-bold shadow-md hover:bg-emerald-900 transition-colors'
+        'w-full mt-6 bg-[#1E4D2B] text-white py-3 rounded-2xl font-bold'
+        ' shadow-md hover:bg-emerald-900 transition-colors'
     )
   dialog.open()
 
@@ -431,6 +525,7 @@ def view_lower_records_content():
           'align': 'center',
       },
       {'name': 'term', 'label': 'Term', 'field': 'term', 'align': 'center'},
+      {'name': 'year', 'label': 'Year', 'field': 'year', 'align': 'center'},
       {
           'name': 'literacy_i',
           'label': 'Lit I',
@@ -522,10 +617,14 @@ def view_lower_records_content():
   def load_data():
     content_area.clear()
     with content_area:
-      with ui.card().classes('w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'):
+      with ui.card().classes(
+          'w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'
+      ):
         try:
           with sqlite3.connect(DB) as conn:
             conn.row_factory = sqlite3.Row
+            # Removed redundant local CREATE TABLE block since init_databases() handles it globally
+
             raw_rows = [
                 dict(r)
                 for r in conn.execute(
@@ -607,7 +706,9 @@ def view_records_content():
   def load_data():
     content_area.clear()
     with content_area:
-      with ui.card().classes('w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'):
+      with ui.card().classes(
+          'w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'
+      ):
         try:
           with sqlite3.connect(DB) as conn:
             conn.row_factory = sqlite3.Row
@@ -618,7 +719,9 @@ def view_records_content():
                 ).fetchall()
             ]
           if not raw_rows:
-            ui.label('No records found.').classes('text-stone-400 p-8 text-center w-full italic')
+            ui.label('No records found.').classes(
+                'text-stone-400 p-8 text-center w-full italic'
+            )
           else:
             all_rows = compute_upper_ranks(raw_rows)
             student_table = ui.table(
@@ -695,8 +798,13 @@ def performance_analytics_hub_content():
       val = selected_dropdown.value
       if not val or 'No Classes Found' in val:
         with metrics_display_area:
-          with ui.card().classes('w-full p-8 items-center rounded-3xl bg-white shadow-md border border-stone-100'):
-            ui.label('No classes available for analysis.').classes('text-stone-400')
+          with ui.card().classes(
+              'w-full p-8 items-center rounded-3xl bg-white shadow-md border'
+              ' border-stone-100'
+          ):
+            ui.label('No classes available for analysis.').classes(
+                'text-stone-400'
+            )
         return
 
       parts = val.split(': ')
@@ -707,7 +815,10 @@ def performance_analytics_hub_content():
 
       with metrics_display_area:
         if not data:
-          with ui.card().classes('w-full p-8 items-center rounded-3xl bg-white shadow-md border border-stone-100'):
+          with ui.card().classes(
+              'w-full p-8 items-center rounded-3xl bg-white shadow-md border'
+              ' border-stone-100'
+          ):
             ui.icon('info', size='2.5rem', color='grey')
             ui.label(f'No student records found for {class_name}.').classes(
                 'text-stone-500 mt-2 font-medium'
@@ -716,7 +827,10 @@ def performance_analytics_hub_content():
 
         # KPI Summary Row
         with ui.row().classes('w-full gap-4'):
-          with ui.card().classes('flex-1 p-5 border-l-4 border-l-[#1E4D2B] bg-white rounded-2xl shadow-sm border-stone-100'):
+          with ui.card().classes(
+              'flex-1 p-5 border-l-4 border-l-[#1E4D2B] bg-white rounded-2xl'
+              ' shadow-sm border-stone-100'
+          ):
             ui.label('Total Enrolled').classes(
                 'text-xs font-bold text-stone-400 uppercase tracking-wider'
             )
@@ -724,7 +838,10 @@ def performance_analytics_hub_content():
                 'text-2xl font-extrabold text-[#1E4D2B] mt-1'
             )
 
-          with ui.card().classes('flex-1 p-5 border-l-4 border-l-blue-500 bg-white rounded-2xl shadow-sm border-stone-100'):
+          with ui.card().classes(
+              'flex-1 p-5 border-l-4 border-l-blue-500 bg-white rounded-2xl'
+              ' shadow-sm border-stone-100'
+          ):
             ui.label('Class Average Score').classes(
                 'text-xs font-bold text-stone-400 uppercase tracking-wider'
             )
@@ -732,7 +849,10 @@ def performance_analytics_hub_content():
                 'text-2xl font-extrabold text-blue-900 mt-1'
             )
 
-          with ui.card().classes('flex-1 p-5 border-l-4 border-l-green-500 bg-white rounded-2xl shadow-sm border-stone-100'):
+          with ui.card().classes(
+              'flex-1 p-5 border-l-4 border-l-green-500 bg-white rounded-2xl'
+              ' shadow-sm border-stone-100'
+          ):
             ui.label('Best Subject').classes(
                 'text-xs font-bold text-stone-400 uppercase tracking-wider'
             )
@@ -740,7 +860,10 @@ def performance_analytics_hub_content():
                 'text-lg font-bold text-green-800 truncate mt-1'
             )
 
-          with ui.card().classes('flex-1 p-5 border-l-4 border-l-red-500 bg-white rounded-2xl shadow-sm border-stone-100'):
+          with ui.card().classes(
+              'flex-1 p-5 border-l-4 border-l-red-500 bg-white rounded-2xl'
+              ' shadow-sm border-stone-100'
+          ):
             ui.label('Weakest Subject').classes(
                 'text-xs font-bold text-stone-400 uppercase tracking-wider'
             )
@@ -752,7 +875,8 @@ def performance_analytics_hub_content():
         with ui.row().classes('w-full gap-6 mt-2'):
           # Top Achievers
           with ui.card().classes(
-              'flex-1 p-6 bg-emerald-50/50 rounded-3xl border border-emerald-100 shadow-sm'
+              'flex-1 p-6 bg-emerald-50/50 rounded-3xl border border-emerald-100'
+              ' shadow-sm'
           ):
             with ui.row().classes('items-center gap-2 mb-4'):
               ui.icon('workspace_premium', color='green', size='1.5rem')
@@ -781,7 +905,8 @@ def performance_analytics_hub_content():
 
           # Students Needing Intervention (< 50 average)
           with ui.card().classes(
-              'flex-1 p-6 bg-rose-50/50 rounded-3xl border border-rose-100 shadow-sm'
+              'flex-1 p-6 bg-rose-50/50 rounded-3xl border border-rose-100'
+              ' shadow-sm'
           ):
             with ui.row().classes('items-center gap-2 mb-4'):
               ui.icon('warning_amber', color='red', size='1.5rem')
@@ -935,11 +1060,9 @@ def staff_chat_content():
             'text-[10px] text-white font-bold px-2 py-0.5'
         )
         ui.timer(3.0, load_messages)
-        ui.button(
-            icon='refresh', on_click=load_messages
-        ).props('flat round dense').classes(
-            'text-white hover:text-amber-300'
-        )
+        ui.button(icon='refresh', on_click=load_messages).props(
+            'flat round dense'
+        ).classes('text-white hover:text-amber-300')
 
     load_messages()
 
@@ -985,7 +1108,8 @@ def staff_chat_content():
       msg_input = (
           ui.input(placeholder='Say something before the bell rings...')
           .classes(
-              'flex-1 bg-stone-100 text-stone-900 rounded-2xl px-4 py-1 border-none'
+              'flex-1 bg-stone-100 text-stone-900 rounded-2xl px-4 py-1'
+              ' border-none'
           )
           .props('borderless dense')
       )
@@ -1090,18 +1214,24 @@ def teacher():
     with ui.column().classes('w-[95%] max-w-7xl gap-8'):
       # --- Header ---
       with ui.card().classes(
-          'w-full p-10 bg-white shadow-lg rounded-3xl text-center border border-stone-100'
+          'w-full p-10 bg-white shadow-lg rounded-3xl text-center border'
+          ' border-stone-100'
       ):
-        ui.label("Strathearn Teachers' Dialogue").classes('text-5xl font-extrabold text-[#1E4D2B]')
+        ui.label("Strathearn Teachers' Dialogue").classes(
+            'text-5xl font-extrabold text-[#1E4D2B]'
+        )
 
       # --- Daily Inspiration ---
       with ui.card().classes(
-          'w-full p-6 bg-amber-50/70 border-l-8 border-amber-400 rounded-3xl shadow-sm border-amber-100/50'
+          'w-full p-6 bg-amber-50/70 border-l-8 border-amber-400 rounded-3xl'
+          ' shadow-sm border-amber-100/50'
       ):
         ui.label('📖 Daily Inspiration').classes(
             'text-amber-900 font-bold text-sm uppercase tracking-wider mb-1'
         )
-        ui.label(random.choice(verses)).classes('text-amber-900/90 italic text-lg font-medium')
+        ui.label(random.choice(verses)).classes(
+            'text-amber-900/90 italic text-lg font-medium'
+        )
 
       # --- Tabs ---
       with ui.tabs().classes(
@@ -1110,25 +1240,32 @@ def teacher():
       ) as tabs:
         tabs.classes('items-center justify-center')
         ui.tab('Dashboard', icon='dashboard').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('Class Analytics', icon='analytics').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('Upper Primary entry', icon='add_circle').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('Upper Primary Records', icon='assignment').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('Lower Primary entry', icon='add_circle').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('lower Primary Records', icon='assignment').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('Staff Chat', icon='forum').classes(
-            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10 text-stone-700 font-bold'
+            'rounded-2xl transition-all duration-300 hover:bg-[#1E4D2B]/10'
+            ' text-stone-700 font-bold'
         )
         ui.tab('Logout', icon='logout').classes(
             'rounded-2xl transition-all duration-300 hover:bg-rose-100'
@@ -1156,7 +1293,8 @@ def teacher():
           with ui.row().classes('w-full gap-4 mb-6'):
             # Active Term Card (Automatic)
             with ui.card().classes(
-                'flex-1 p-6 border-l-4 border-l-[#1E4D2B] bg-white rounded-3xl shadow-md border-stone-100'
+                'flex-1 p-6 border-l-4 border-l-[#1E4D2B] bg-white rounded-3xl'
+                ' shadow-md border-stone-100'
             ):
               ui.label('ACADEMIC CALENDAR').classes(
                   'text-xs font-bold text-stone-400 uppercase tracking-wider'
@@ -1182,7 +1320,8 @@ def teacher():
               upper_count, lower_count, total_pupils = 0, 0, 0
 
             with ui.card().classes(
-                'flex-1 p-6 border-l-4 border-l-blue-600 bg-white rounded-3xl shadow-md border-stone-100'
+                'flex-1 p-6 border-l-4 border-l-blue-600 bg-white rounded-3xl'
+                ' shadow-md border-stone-100'
             ):
               ui.label('TOTAL ENROLLED').classes(
                   'text-xs font-bold text-stone-400 uppercase tracking-wider'
@@ -1205,7 +1344,8 @@ def teacher():
               p7_count = 0
 
             with ui.card().classes(
-                'flex-1 p-6 border-l-4 border-l-amber-500 bg-white rounded-3xl shadow-md border-stone-100'
+                'flex-1 p-6 border-l-4 border-l-amber-500 bg-white rounded-3xl'
+                ' shadow-md border-stone-100'
             ):
               ui.label('P.7 CANDIDATE CLASS').classes(
                   'text-xs font-bold text-stone-400 uppercase tracking-wider'
@@ -1228,27 +1368,36 @@ def teacher():
             with ui.row().classes('w-full gap-6'):
               # KPIs
               with ui.card().classes(
-                  'w-full md:w-1/3 p-6 shadow-md rounded-3xl bg-white border-t-4 border-t-indigo-500 border-stone-100'
+                  'w-full md:w-1/3 p-6 shadow-md rounded-3xl bg-white'
+                  ' border-t-4 border-t-indigo-500 border-stone-100'
               ):
                 ui.label('Subject Performance Trends').classes(
-                    'text-sm font-bold text-stone-600 mb-6 uppercase tracking-wider'
+                    'text-sm font-bold text-stone-600 mb-6 uppercase'
+                    ' tracking-wider'
                 )
                 with ui.row().classes('w-full justify-around'):
                   with ui.column().classes('items-center'):
                     ui.icon('trending_up', color='green', size='2rem')
-                    ui.label('Top').classes('text-xs text-stone-400 uppercase mt-1')
+                    ui.label('Top').classes(
+                        'text-xs text-stone-400 uppercase mt-1'
+                    )
                     ui.label(metrics['best']).classes(
                         'text-lg font-bold text-green-700 mt-0.5'
                     )
                   with ui.column().classes('items-center'):
                     ui.icon('trending_down', color='red', size='2rem')
-                    ui.label('Low').classes('text-xs text-stone-400 uppercase mt-1')
+                    ui.label('Low').classes(
+                        'text-xs text-stone-400 uppercase mt-1'
+                    )
                     ui.label(metrics['worst']).classes(
                         'text-lg font-bold text-red-700 mt-0.5'
                     )
 
               # Support & Achievement Lists
-              with ui.card().classes('w-full md:w-[63%] p-6 shadow-md rounded-3xl bg-white border border-stone-100'):
+              with ui.card().classes(
+                  'w-full md:w-[63%] p-6 shadow-md rounded-3xl bg-white border'
+                  ' border-stone-100'
+              ):
                 with ui.row().classes('w-full gap-8'):
                   # Column 1: Academic Intervention (< 50 average)
                   with ui.column().classes('flex-1'):
@@ -1285,7 +1434,8 @@ def teacher():
                       )
                     for s in metrics['rising']:
                       with ui.row().classes(
-                          'w-full justify-between py-1 border-b border-emerald-100/60'
+                          'w-full justify-between py-1 border-b'
+                          ' border-emerald-100/60'
                       ):
                         ui.label(f"{s['Name']} ({s['Class']})").classes(
                             'text-sm text-stone-800 font-medium'
@@ -1294,7 +1444,10 @@ def teacher():
                             'font-mono text-xs text-emerald-600 font-bold'
                         )
           else:
-            with ui.card().classes('w-full p-10 items-center rounded-3xl shadow-md bg-white border border-stone-100'):
+            with ui.card().classes(
+                'w-full p-10 items-center rounded-3xl shadow-md bg-white border'
+                ' border-stone-100'
+            ):
               ui.icon('analytics', size='3rem', color='grey')
               ui.label('No academic data available for analysis.').classes(
                   'text-stone-500 mt-2 font-medium'
@@ -1302,39 +1455,56 @@ def teacher():
 
         # --- Class Analytics Panel ---
         with ui.tab_panel('Class Analytics'):
-          with ui.card().classes('w-full p-6 bg-transparent shadow-none border-none'):
+          with ui.card().classes(
+              'w-full p-6 bg-transparent shadow-none border-none'
+          ):
             performance_analytics_hub_content()
 
         # --- Upper Primary Entry Panel ---
         with ui.tab_panel('Upper Primary entry'):
-          with ui.card().classes('w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'):
+          with ui.card().classes(
+              'w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'
+          ):
             insert.insert()
 
         # --- Upper Primary Records Panel ---
         with ui.tab_panel('Upper Primary Records'):
-          with ui.card().classes('w-full p-6 bg-transparent shadow-none border-none'):
+          with ui.card().classes(
+              'w-full p-6 bg-transparent shadow-none border-none'
+          ):
             view_records_content()
 
         # --- Lower Primary Entry Panel ---
         with ui.tab_panel('Lower Primary entry'):
-          with ui.card().classes('w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'):
+          with ui.card().classes(
+              'w-full p-6 shadow-md rounded-3xl bg-white border border-stone-100'
+          ):
             lower.lower()
 
         # --- Lower Primary Records Panel ---
         with ui.tab_panel('lower Primary Records'):
-          with ui.card().classes('w-full p-6 bg-transparent shadow-none border-none'):
+          with ui.card().classes(
+              'w-full p-6 bg-transparent shadow-none border-none'
+          ):
             view_lower_records_content()
 
         # --- Staff Chat Panel ---
         with ui.tab_panel('Staff Chat'):
-          with ui.card().classes('w-full p-6 bg-transparent shadow-none border-none'):
+          with ui.card().classes(
+              'w-full p-6 bg-transparent shadow-none border-none'
+          ):
             staff_chat_content()
 
         # --- Logout Panel ---
         with ui.tab_panel('Logout'):
-          with ui.card().classes('w-[350px] mx-auto items-center p-8 rounded-3xl shadow-xl bg-white border border-stone-100'):
+          with ui.card().classes(
+              'w-[350px] mx-auto items-center p-8 rounded-3xl shadow-xl bg-white'
+              ' border border-stone-100'
+          ):
             ui.icon('logout', size='4rem', color='red-500')
-            ui.label('Ready to leave?').classes('text-xl font-bold mt-4 text-stone-800')
+            ui.label('Ready to leave?').classes(
+                'text-xl font-bold mt-4 text-stone-800'
+            )
             ui.label('Your session will be closed.').classes(
                 'text-stone-500 mb-6 text-sm'
             )
