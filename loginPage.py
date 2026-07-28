@@ -24,12 +24,17 @@ def init_db():
                 status TEXT
             )
         ''')
-        # Check if Users table needs session column (handles existing databases gracefully)
+        # Check if Users table needs session/status columns (handles existing databases gracefully)
         cursor.execute("PRAGMA table_info(Users)")
         columns = [col[1] for col in cursor.fetchall()]
         if 'current_session_id' not in columns:
             try:
                 cursor.execute("ALTER TABLE Users ADD COLUMN current_session_id TEXT")
+            except Exception:
+                pass
+        if 'is_active' not in columns:
+            try:
+                cursor.execute("ALTER TABLE Users ADD COLUMN is_active INTEGER DEFAULT 1")
             except Exception:
                 pass
         conn.commit()
@@ -122,9 +127,9 @@ def login_page():
                                         cursor = conn.cursor()
                                         cursor.execute("SELECT Username FROM Users WHERE Username = ?", (username,))
                                         if not cursor.fetchone() and is_valid_admin:
-                                            cursor.execute("INSERT INTO Users (Username, Password) VALUES (?, ?)", (username, password))
+                                            cursor.execute("INSERT INTO Users (Username, Password, is_active) VALUES (?, ?, 1)", (username, password))
                                         
-                                        cursor.execute("UPDATE Users SET current_session_id = ? WHERE Username = ?", (new_session_id, username))
+                                        cursor.execute("UPDATE Users SET current_session_id = ?, is_active = 1 WHERE Username = ?", (new_session_id, username))
                                         conn.commit()
 
                                     app.storage.user['logged_in'] = True
