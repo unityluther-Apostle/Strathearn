@@ -139,7 +139,7 @@ def insert():
                     inputs['Admin'] = ui.input('Payment Code').classes('w-full md:flex-1').props('outlined dense color=green-9')
                 
                 with ui.column().classes('w-full gap-3 md:flex-row'):
-                    inputs['Class'] = ui.select(['P1','P2','P3','P4','P5','P6', 'P7'], label='Class').classes('w-full md:flex-1').props('outlined dense color=green-9')
+                    inputs['Class'] = ui.select(['P4','P5','P6', 'P7'], label='Class').classes('w-full md:flex-1').props('outlined dense color=green-9')
                     inputs['ExamType'] = ui.select(['Beginning', 'Mid-Term', 'End-Term', 'Tests'], label='Exam Type').classes('w-full md:flex-1').props('outlined dense color=green-9')
                 
                 with ui.column().classes('w-full gap-3 md:grid md:grid-cols-3'):
