@@ -7,6 +7,7 @@ import polars as pl
 import insert
 import report
 import lower
+import os
 
 # Set the primary color theme for NiceGUI elements (Forest Dark Green)
 ui.colors(primary='#1b4d3e', secondary='#ffffff', accent='#f59e0b')
@@ -18,14 +19,13 @@ activity_table = None
 all_logs = []
 DB = 'School_Results_Database.db'
 
-# Initialize database tables and safely add columns (like Year, Aggregates, Division, Term) if they do not exist
 def init_db_and_load_records():
     global student_records
     current_year_str = str(datetime.now().year)
     with sqlite3.connect(DB) as conn:
         cursor = conn.cursor()
         
-        # Create academic records table if it doesn't already exist
+        # 1. Create academic records table if it doesn't already exist
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS academic_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -55,7 +55,29 @@ def init_db_and_load_records():
             )
         ''')
 
-        # Safely add columns to pre-existing tables if missing
+        # 2. Create lower primary results table FIRST so it always exists
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS lower_primary_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payment_code TEXT,
+                name TEXT,
+                class_level TEXT,
+                term TEXT,
+                year TEXT,
+                literacy_i REAL,
+                literacy_ii REAL,
+                reading REAL,
+                luganda REAL,
+                mathematics REAL,
+                english REAL,
+                social_studies REAL,
+                science REAL,
+                re_religious_education REAL,
+                class_teacher TEXT
+            )
+        ''')
+
+        # Safely add columns to academic_records if missing
         for col_def in [
             (f"Year TEXT DEFAULT '{current_year_str}'"),
             ("Aggregates INTEGER"),
@@ -68,13 +90,13 @@ def init_db_and_load_records():
             except sqlite3.OperationalError:
                 pass
 
-        # Backfill any blank or null year values with the current year
+        # Backfill academic records year
         cursor.execute(f"UPDATE academic_records SET Year = '{current_year_str}' WHERE Year IS NULL OR Year = ''")
 
         # Create activity logs tracking table
         cursor.execute('CREATE TABLE IF NOT EXISTS activity_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, timestamp TEXT, status TEXT)')
         
-        # Ensure lower primary table has year and term columns
+        # Ensure lower primary table has year and term columns safely
         try:
             cursor.execute(f"ALTER TABLE lower_primary_results ADD COLUMN year TEXT DEFAULT '{current_year_str}'")
         except sqlite3.OperationalError:
@@ -84,13 +106,10 @@ def init_db_and_load_records():
         except sqlite3.OperationalError:
             pass
             
+        # Now safe to update lower primary results
         cursor.execute(f"UPDATE lower_primary_results SET year = '{current_year_str}' WHERE year IS NULL OR year = ''")
 
         conn.commit()
-
-# Run database setup FIRST before any migration updates
-init_db_and_load_records()
-
 # --- AUTOMATIC INACTIVITY LOGOUT CHECKER & COUNTDOWN BANNER ---
 INACTIVITY_LIMIT_MINUTES = 30
 
@@ -553,13 +572,70 @@ def open_edit_dialog(record):
 
 # --- INITIALIZE CHAT DATABASE TABLE ---
 def init_chat_db():
-    with sqlite3.connect(DB) as conn:
-        conn.execute('''
+  with sqlite3.connect(DB) as conn:
+    conn.execute('''
             CREATE TABLE IF NOT EXISTS staff_chat (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sender TEXT,
                 message TEXT,
                 timestamp TEXT
+            )
+        ''')
+    
+    # 1. CREATE THE TABLE FIRST SO IT ALWAYS EXISTS
+    conn.execute('''
+            CREATE TABLE IF NOT EXISTS lower_primary_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payment_code TEXT,
+                pupil_name TEXT,
+                class_level TEXT,
+                term TEXT,
+                year TEXT,
+                literacy_i REAL,
+                literacy_ii REAL,
+                reading REAL,
+                luganda REAL,
+                mathematics REAL,
+                english REAL,
+                social_studies REAL,
+                science REAL,
+                re_religious_education REAL,
+                class_teacher TEXT
+            )
+        ''')
+    
+    # 2. SAFE TO RUN UPDATE NOW THAT THE TABLE IS GUARANTEED TO EXIST
+    current_year_str = str(datetime.now().year)
+    conn.execute(f"UPDATE lower_primary_results SET year = '{current_year_str}' WHERE year IS NULL OR year = ''")
+    conn.commit()
+
+    # Ensure upper primary academic_records table exists as well
+    conn.execute('''
+            CREATE TABLE IF NOT EXISTS academic_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Name TEXT,
+                PaymentCode TEXT,
+                Class TEXT,
+                Year TEXT,
+                Term TEXT,
+                ExamType TEXT,
+                ExamDate TEXT,
+                Attendance TEXT,
+                Remarks TEXT,
+                Maths INTEGER,
+                Maths_Grade TEXT,
+                English INTEGER,
+                English_Grade TEXT,
+                SST INTEGER,
+                SST_Grade TEXT,
+                Science INTEGER,
+                Science_Grade TEXT,
+                Total INTEGER,
+                Average REAL,
+                Grade TEXT,
+                Aggregates INTEGER,
+                Division TEXT,
+                Rank TEXT
             )
         ''')
 
