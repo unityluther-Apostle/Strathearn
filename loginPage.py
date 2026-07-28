@@ -87,8 +87,8 @@ def login_page():
                 with ui.column().classes('w-full items-center mb-8'):
                     with ui.row().classes('w-14 h-14 bg-[#800000]/10 rounded-2xl justify-center items-center mb-3 shadow-inner overflow-hidden'):
                         ui.image('badge.jpeg').classes('w-full h-full object-cover')
-                    ui.label('Institutional Portal').classes('text-2xl font-extrabold tracking-tight text-slate-800 text-center')
-                    ui.label('Secure Access Management').classes('text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider')
+                    ui.label('Strathearn Portal').classes('text-2xl font-extrabold tracking-tight text-slate-800 text-center')
+                    ui.label('Report Management System').classes('text-xs font-medium text-slate-400 mt-1 uppercase tracking-wider')
 
                 # Navigation tabs switching between Login, Registration, and Password Reset
                 with ui.tabs().classes('w-full bg-slate-100/80 rounded-xl p-1 shadow-inner') as tabs:
