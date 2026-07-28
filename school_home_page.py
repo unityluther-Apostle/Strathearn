@@ -1,3 +1,4 @@
+name=school_home_page_2.py
 import sqlite3
 import io
 from datetime import datetime, timedelta
@@ -73,7 +74,8 @@ def init_db_and_load_records():
                 social_studies REAL,
                 science REAL,
                 re_religious_education REAL,
-                class_teacher TEXT
+                class_teacher TEXT,
+                timestamp TEXT
             )
         ''')
 
@@ -111,11 +113,18 @@ def init_db_and_load_records():
                 cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN term TEXT")
             except sqlite3.OperationalError:
                 pass
+
+        if 'timestamp' not in existing_columns:
+            try:
+                cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN timestamp TEXT")
+            except sqlite3.OperationalError:
+                pass
             
         # Now safe to update lower primary results
         cursor.execute(f"UPDATE lower_primary_results SET year = '{current_year_str}' WHERE year IS NULL OR year = ''")
 
         conn.commit()
+
 # --- AUTOMATIC INACTIVITY LOGOUT CHECKER & COUNTDOWN BANNER ---
 INACTIVITY_LIMIT_MINUTES = 30
 
@@ -256,7 +265,7 @@ def local_calculate_grades(raw_data):
     row["Rank"] = "N/A"
     return row
 
-# Helper to query student enrollment counts per class from SQLite (including lower primary)
+# Helper to query student enrollment counts per class from SQLite (including lower primary)[cite: 4]
 def get_class_enrollment_counts():
     counts = {}
     try:
@@ -285,7 +294,7 @@ def get_class_enrollment_counts():
         
     return counts
 
-# Retrieve aggregate dashboard statistics from SQLite
+# Retrieve aggregate dashboard statistics from SQLite[cite: 4]
 def get_dashboard_stats():
     stats = {
         'total_students': 0, 
@@ -560,7 +569,6 @@ def open_edit_dialog(record):
                     ))
                     conn.commit()
 
-                # Ensure class-wide ranks and divisions sync properly across the table view
                 update_all_ranks()
 
                 ui.notify("Record updated and divisions recalculated successfully!", type='positive')
@@ -576,7 +584,7 @@ def open_edit_dialog(record):
 
     edit_dialog.open()
 
-# --- INITIALIZE CHAT DATABASE TABLE ---
+# --- INITIALIZE CHAT & LOWER PRIMARY DATABASE TABLES ---
 def init_chat_db():
   with sqlite3.connect(DB) as conn:
     cursor = conn.cursor()
@@ -590,12 +598,11 @@ def init_chat_db():
         )
     ''')
     
-    # 1. CREATE THE TABLE FIRST SO IT ALWAYS EXISTS
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS lower_primary_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             payment_code TEXT,
-            pupil_name TEXT,
+            name TEXT,
             class_level TEXT,
             term TEXT,
             year TEXT,
@@ -608,11 +615,11 @@ def init_chat_db():
             social_studies REAL,
             science REAL,
             re_religious_education REAL,
-            class_teacher TEXT
+            class_teacher TEXT,
+            timestamp TEXT
         )
     ''')
     
-    # 2. Safely check and add columns via PRAGMA table_info to avoid 'no such column' errors on existing tables
     cursor.execute("PRAGMA table_info(lower_primary_results)")
     existing_columns = [row[1] for row in cursor.fetchall()]
 
@@ -629,11 +636,15 @@ def init_chat_db():
             cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN term TEXT")
         except sqlite3.OperationalError:
             pass
+
+    if 'timestamp' not in existing_columns:
+        try:
+            cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN timestamp TEXT")
+        except sqlite3.OperationalError:
+            pass
     
-    # 3. SAFE TO RUN UPDATE NOW THAT THE COLUMN IS GUARANTEED TO EXIST
     cursor.execute(f"UPDATE lower_primary_results SET year = '{current_year_str}' WHERE year IS NULL OR year = ''")
 
-    # Ensure upper primary academic_records table exists as well
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS academic_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -666,6 +677,7 @@ def init_chat_db():
     conn.commit()
 
 init_chat_db()
+
 # --- STAFF CHAT ROOM CONTENT ---
 def staff_chat_content():
     chat_container = ui.column().classes(
@@ -684,10 +696,7 @@ def staff_chat_content():
     def delete_message(msg_id):
         try:
             with sqlite3.connect(DB) as conn:
-                conn.execute(
-                    'DELETE FROM staff_chat WHERE id = ?',
-                    (msg_id,)
-                )
+                conn.execute('DELETE FROM staff_chat WHERE id = ?', (msg_id,))
             ui.notify('Message deleted', type='warning')
             load_messages()
         except Exception as e:
@@ -700,14 +709,10 @@ def staff_chat_content():
             try:
                 with sqlite3.connect(DB) as conn:
                     conn.row_factory = sqlite3.Row
-                    messages = conn.execute(
-                        'SELECT * FROM staff_chat ORDER BY id ASC'
-                    ).fetchall()
+                    messages = conn.execute('SELECT * FROM staff_chat ORDER BY id ASC').fetchall()
 
                 if not messages:
-                    with ui.column().classes(
-                        'w-full items-center justify-center h-full gap-2'
-                    ):
+                    with ui.column().classes('w-full items-center justify-center h-full gap-2'):
                         ui.icon('chat_bubble_outline', size='48px', color='#1b4d3e').classes('opacity-40')
                         ui.label('No messages yet').classes('text-slate-500 font-semibold')
                         ui.label('Start the staff conversation').classes('text-xs text-slate-400')
@@ -1067,6 +1072,12 @@ def view_lower_records_content(lower_primary_tab):
                                 conn.commit()
                             except Exception:
                                 pass
+                        if 'timestamp' not in columns_info:
+                            try:
+                                cursor.execute("ALTER TABLE lower_primary_results ADD COLUMN timestamp TEXT")
+                                conn.commit()
+                            except Exception:
+                                pass
 
                         query = "SELECT * FROM lower_primary_results WHERE 1=1"
                         params = []
@@ -1111,7 +1122,7 @@ def view_lower_records_content(lower_primary_tab):
 
             refresh_lower_table_data()
 
-# Main page layout and UI configuration function for NiceGUI
+# Main page layout and UI configuration function for NiceGUI[cite: 4]
 def home(client=None):
     global countdown_label
     if not app.storage.user.get('logged_in'):
@@ -1155,7 +1166,6 @@ def home(client=None):
                                 font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
                             }
                             
-                            /* Ensure A4 report print fits single page and respects page breaks */
                             @media print {
                                 body {
                                     background: white !important;
@@ -1294,7 +1304,7 @@ def home(client=None):
                         ui.label(f"{percentage}%").classes('text-4xl font-black text-slate-900 mt-3')
                         ui.label(f"Performance Level: {status}").classes('text-xs font-semibold text-emerald-800 mt-1')
 
-                # Enrollment Breakdown Section
+                # Enrollment Breakdown Section (Updated to correctly parse counts for P1, P2, and P3)[cite: 4]
                 with ui.card().classes('w-full p-6 bg-white shadow-xl rounded-3xl border border-slate-100'):
                     with ui.row().classes('items-center gap-2 mb-6'):
                         ui.icon('groups', color='primary').classes('text-2xl')
@@ -1319,7 +1329,8 @@ def home(client=None):
                             count = (
                                 class_counts.get(cls_name, 0) or 
                                 class_counts.get(cls_name.lower(), 0) or 
-                                class_counts.get(cls_name.replace('P', ''), 0)
+                                class_counts.get(cls_name.replace('P', ''), 0) or
+                                class_counts.get(str(int(cls_name.replace('P',''))), 0)
                             )
                             style = class_colors.get(cls_name, {'bg': 'bg-slate-50', 'border': 'border-slate-200', 'text': 'text-slate-700'})
                             with ui.card().classes(f"flex-1 min-w-[140px] p-5 {style['bg']} rounded-2xl border {style['border']} items-center justify-center shadow-sm"):
@@ -1334,7 +1345,8 @@ def home(client=None):
                             count = (
                                 class_counts.get(cls_name, 0) or 
                                 class_counts.get(cls_name.lower(), 0) or 
-                                class_counts.get(cls_name.replace('P', ''), 0)
+                                class_counts.get(cls_name.replace('P', ''), 0) or
+                                class_counts.get(str(int(cls_name.replace('P',''))), 0)
                             )
                             style = class_colors.get(cls_name, {'bg': 'bg-slate-50', 'border': 'border-slate-200', 'text': 'text-slate-700'})
                             with ui.card().classes(f"flex-1 min-w-[140px] p-5 {style['bg']} rounded-2xl border {style['border']} items-center justify-center shadow-sm"):
