@@ -1245,7 +1245,7 @@ def teacher():
         ui.icon('auto_stories', size='6rem', color='teal').classes(
             'absolute -left-8 -top-8 opacity-10'
         )
-        ui.label("Teacher's Dialogue").classes(
+        ui.label("Strathearn's Dialogue").classes(
             'text-3xl md:text-5xl font-black text-white tracking-tight'
         )
         ui.label(
