@@ -1,0 +1,14 @@
+dbs:
+  # Configuration for your main School Results database
+  - path: /app/School_Results_Database.db
+    replicas:
+      - type: s3
+        bucket: my-sqlite-backups-strathearn
+        endpoint: https://backblazeb2.com
+
+  # Configuration for your second database file
+  - path: /app/passkey.db
+    replicas:
+      - type: s3
+        bucket: my-sqlite-backups-strathearn
+        endpoint: https://backblazeb2.com
