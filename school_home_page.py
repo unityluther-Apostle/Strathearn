@@ -1735,35 +1735,60 @@ def home(client=None):
                     ui.button('Sign Out', on_click=perform_logout).props('color="red-7" unelevated rounded-pill font-bold').classes('flex-1')
 
 # Function to recalculate class positions/ranks for UPPER PRIMARY academic_records
+# Function to recalculate class positions/ranks for UPPER PRIMARY academic_records
 def update_all_ranks():
+    """
+    Updates Total, Average, Aggregates, Division and Rank for upper primary.
+
+    Ranking priority:
+    1. Division (Div 1 is best)
+    2. Aggregates (lower is better)
+    3. Total (higher is better)
+
+    Division penalty:
+    - F9 in both English and Maths => Div U
+    - F9 in English OR Maths => division drops by one step
+    """
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT id, Class, Year, Term, Maths, English, SST, Science FROM academic_records")
+            cursor.execute("""
+                SELECT id, Class, Year, Term, Maths, English, SST, Science
+                FROM academic_records
+            """)
             columns = [col[0] for col in cursor.description] if cursor.description else []
             rows = [dict(zip(columns, r)) for r in cursor.fetchall()]
+
             if not rows:
                 return
-            
+
             df = pl.DataFrame(rows)
-            
-            # Fill nulls for subjects
+
+            # Ensure subject columns exist and are numbers
             for col in ['Maths', 'English', 'SST', 'Science']:
                 if col in df.columns:
                     df = df.with_columns(pl.col(col).fill_null(0).cast(pl.Int64))
                 else:
                     df = df.with_columns(pl.lit(0).alias(col))
-                    
-            # Calculate Total and Average
+
+            # Ensure grouping columns exist
+            for col in ['Class', 'Year', 'Term']:
+                if col in df.columns:
+                    df = df.with_columns(pl.col(col).fill_null('Unknown'))
+                else:
+                    df = df.with_columns(pl.lit('Unknown').alias(col))
+
+            # Total and Average
             df = df.with_columns(
                 (pl.col('Maths') + pl.col('English') + pl.col('SST') + pl.col('Science')).alias('Total')
             )
+
             df = df.with_columns(
                 (pl.col('Total') / 4.0).alias('Average')
             )
-            
-            # Vectorized grade calculation (UNEB Grading)
+
+            # UNEB grade value: 1 is best, 9 is worst
             def get_agg_expr(col_name):
                 return (
                     pl.when(pl.col(col_name) >= 80).then(1)
@@ -1778,61 +1803,132 @@ def update_all_ranks():
                 )
 
             df = df.with_columns([
-                get_agg_expr('Maths').alias('M_Agg'),
-                get_agg_expr('English').alias('E_Agg'),
-                get_agg_expr('SST').alias('SST_Agg'),
-                get_agg_expr('Science').alias('Sci_Agg')
+                get_agg_expr('Maths').alias('Maths_GradeValue'),
+                get_agg_expr('English').alias('English_GradeValue'),
+                get_agg_expr('SST').alias('SST_GradeValue'),
+                get_agg_expr('Science').alias('Science_GradeValue'),
             ])
-            
+
+            # Aggregates
             df = df.with_columns(
-                (pl.col('M_Agg') + pl.col('E_Agg') + pl.col('SST_Agg') + pl.col('Sci_Agg')).alias('Aggregates')
+                (
+                    pl.col('Maths_GradeValue') +
+                    pl.col('English_GradeValue') +
+                    pl.col('SST_GradeValue') +
+                    pl.col('Science_GradeValue')
+                ).alias('Aggregates')
             )
-            
-            # Division logic
+
+            # Base division order from aggregates
+            # 1 = Div 1, 2 = Div 2, 3 = Div 3, 4 = Div 4, 5 = Div U
             df = df.with_columns(
-                pl.when((pl.col('E_Agg') == 9) & (pl.col('M_Agg') == 9)).then(pl.lit("Div U"))
-                .when(pl.col('Aggregates') <= 12).then(pl.lit("Div 1"))
-                .when(pl.col('Aggregates') <= 23).then(pl.lit("Div 2"))
-                .when(pl.col('Aggregates') <= 29).then(pl.lit("Div 3"))
-                .when(pl.col('Aggregates') <= 34).then(pl.lit("Div 4"))
-                .otherwise(pl.lit("Div U"))
+                pl.when(pl.col('Aggregates') <= 12).then(pl.lit(1))
+                .when(pl.col('Aggregates') <= 23).then(pl.lit(2))
+                .when(pl.col('Aggregates') <= 29).then(pl.lit(3))
+                .when(pl.col('Aggregates') <= 34).then(pl.lit(4))
+                .otherwise(pl.lit(5))
+                .alias('DivisionOrder')
+            )
+
+            # If pupil has F9 in English OR Maths, drop division by one step
+            df = df.with_columns(
+                pl.when(
+                    (pl.col('English_GradeValue') == 9) |
+                    (pl.col('Maths_GradeValue') == 9)
+                )
+                .then(pl.col('DivisionOrder') + 1)
+                .otherwise(pl.col('DivisionOrder'))
+                .alias('DivisionOrder')
+            )
+
+            # Prevent division order from going beyond 5
+            df = df.with_columns(
+                pl.when(pl.col('DivisionOrder') > 5)
+                .then(pl.lit(5))
+                .otherwise(pl.col('DivisionOrder'))
+                .alias('DivisionOrder')
+            )
+
+            # If pupil has F9 in BOTH English and Maths, force Div U
+            df = df.with_columns(
+                pl.when(
+                    (pl.col('English_GradeValue') == 9) &
+                    (pl.col('Maths_GradeValue') == 9)
+                )
+                .then(pl.lit(5))
+                .otherwise(pl.col('DivisionOrder'))
+                .alias('DivisionOrder')
+            )
+
+            # Convert division order to readable division
+            df = df.with_columns(
+                pl.when(pl.col('DivisionOrder') == 1).then(pl.lit('Div 1'))
+                .when(pl.col('DivisionOrder') == 2).then(pl.lit('Div 2'))
+                .when(pl.col('DivisionOrder') == 3).then(pl.lit('Div 3'))
+                .when(pl.col('DivisionOrder') == 4).then(pl.lit('Div 4'))
+                .otherwise(pl.lit('Div U'))
                 .alias('Division')
             )
-            
-            # Rank calculation (grouped by Class, Year, Term)
-            group_cols = [col for col in ['Class', 'Year', 'Term'] if col in df.columns]
-            
-            # Fill nulls in group cols to avoid polars grouping issues
-            for col in group_cols:
-                df = df.with_columns(pl.col(col).fill_null("Unknown"))
-            
-            if group_cols:
-                # Rank by Aggregates ascending (lower aggregates = better rank)
-                df = df.with_columns(
-                    pl.col('Aggregates').rank(method="dense", descending=False).over(group_cols).alias('Rank')
-                )
-            else:
-                df = df.with_columns(
-                    pl.col('Aggregates').rank(method="dense", descending=False).alias('Rank')
-                )
-                
-            # Update database
-            updated_rows = df.select(['id', 'Total', 'Average', 'Aggregates', 'Division', 'Rank']).to_dicts()
+
+            # Rank score:
+            # DivisionOrder dominates ranking.
+            # Then Aggregates.
+            # Then Total is used as tie-breaker.
+            #
+            # Lower RankScore = better rank.
+            df = df.with_columns(
+                (
+                    (pl.col('DivisionOrder') * 100000) +
+                    (pl.col('Aggregates') * 1000) -
+                    pl.col('Total')
+                ).alias('RankScore')
+            )
+
+            group_cols = ['Class', 'Year', 'Term']
+
+            # Rank within Class, Year and Term
+            df = df.with_columns(
+                pl.col('RankScore')
+                .rank(method='min')
+                .over(group_cols)
+                .alias('Rank')
+            )
+
+            # Save updated values to database
+            updated_rows = df.select([
+                'id',
+                'Total',
+                'Average',
+                'Aggregates',
+                'Division',
+                'Rank'
+            ]).to_dicts()
+
             for row in updated_rows:
                 cursor.execute('''
-                    UPDATE academic_records 
-                    SET Total = ?, Average = ?, Aggregates = ?, Division = ?, Rank = ? 
+                    UPDATE academic_records
+                    SET Total = ?,
+                        Average = ?,
+                        Aggregates = ?,
+                        Division = ?,
+                        Rank = ?
                     WHERE id = ?
                 ''', (
-                    row['Total'], row['Average'], row['Aggregates'], 
-                    row['Division'], str(int(row['Rank'])), row['id']
+                    int(row['Total']),
+                    float(row['Average']),
+                    int(row['Aggregates']),
+                    row['Division'],
+                    str(int(row['Rank'])),
+                    row['id']
                 ))
+
             conn.commit()
+
         finally:
             conn.close()
-    except Exception as e:
-        print(f"Error updating ranks: {e}")
 
+    except Exception as e:
+        print(f"Error updating upper primary ranks: {e}")
 # Renamed from duplicate 'update_all_ranks' to avoid Python function overwriting
 def update_lower_ranks():
     """Recalculates and updates the ranks for all lower primary students in the database
