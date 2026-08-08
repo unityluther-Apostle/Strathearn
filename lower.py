@@ -1,15 +1,15 @@
 from datetime import datetime
-import sqlite3
+import os
+import libsql
 from nicegui import ui
-
-# Define the shared database constant
-DB = 'School_Results_Database.db'
+from verifying_passcode import get_db_connection
 
 
 def init_db():
   """Initializes the database table and checks for missing columns."""
-  with sqlite3.connect(DB) as conn:
-    cursor = conn.cursor()
+  conn = get_db_connection()
+  cursor = conn.cursor()
+  try:
     cursor.execute('''
             CREATE TABLE IF NOT EXISTS lower_primary_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,6 +82,8 @@ def init_db():
       cursor.execute('ALTER TABLE lower_primary_results ADD COLUMN interest TEXT')
 
     conn.commit()
+  finally:
+    conn.close()
 
 
 def save_result(
@@ -141,8 +143,9 @@ def save_result(
         )
         return False
 
-    with sqlite3.connect(DB) as conn:
-      cursor = conn.cursor()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
       cursor.execute(
           """
                 INSERT INTO lower_primary_results 
@@ -171,6 +174,8 @@ def save_result(
           ),
       )
       conn.commit()
+    finally:
+      conn.close()
 
     ui.notify(
         f"✨ {pupil_name}'s results saved successfully!",
@@ -211,7 +216,7 @@ def lower():
               .classes('w-full md:flex-1')
               .props('outlined dense clearable color=emerald')
           )
-          name_input = (
+          pupil_name_input = (
               ui.input('Pupil Full Name')
               .classes('w-full md:flex-1')
               .props('outlined dense clearable color=emerald')
@@ -336,7 +341,7 @@ def lower():
         def handle_submit():
           success = save_result(
               payment_code_input.value,
-              name_input.value,
+              pupil_name_input.value,
               class_select.value,
               term_select.value,
               lit_i_input.value,
@@ -355,22 +360,25 @@ def lower():
               interest_input.value,
           )
           if success:
-            payment_code_input.value = None
-            name_input.value = None
-            lit_i_input.value = None
-            lit_ii_input.value = None
-            reading_input.value = None
-            luganda_input.value = None
-            math_input.value = None
-            eng_input.value = None
-            sst_input.value = None
-            science_input.value = None
-            re_input.value = None
-            teacher_remarks_input.value = None
-            head_comment_input.value = None
-            conduct_input.value = None
-            interest_input.value = None
-            refresh_table()
+                payment_code_input.value = None
+                pupil_name_input.value = None
+                class_select.value = None
+                term_select.value = None
+                lit_i_input.value = None
+                lit_ii_input.value = None
+                reading_input.value = None
+                luganda_input.value = None
+                math_input.value = None
+                eng_input.value = None
+                sst_input.value = None
+                science_input.value = None
+                re_input.value = None
+                teacher_input.value = None
+                teacher_remarks_input.value = None
+                head_comment_input.value = None
+                conduct_input.value = None
+                interest_input.value = None
+                refresh_table()
 
         # Practical high-contrast button optimized for mobile touch targets
         ui.button('Save Student Results', on_click=handle_submit).classes(
@@ -388,27 +396,31 @@ def lower():
           table_container.clear()
           with table_container:
             try:
-              with sqlite3.connect(DB) as conn:
-                conn.row_factory = sqlite3.Row
-                rows = conn.execute(
+              conn = get_db_connection()
+              cursor = conn.cursor()
+              try:
+                records = cursor.execute(
                     'SELECT payment_code, pupil_name, class_level, literacy_i,'
                     ' literacy_ii, reading, luganda, mathematics, english,'
                     ' social_studies, science, re_religious_education FROM'
                     ' lower_primary_results ORDER BY id DESC LIMIT 5'
                 ).fetchall()
-
+                
+                columns = [col[0] for col in cursor.description] if cursor.description else []
+                
                 table_data = []
-                for r in rows:
+                for r in records:
+                  row = dict(zip(columns, r))
                   scores = [
-                      r['literacy_i'],
-                      r['literacy_ii'],
-                      r['reading'],
-                      r['luganda'],
-                      r['mathematics'],
-                      r['english'],
-                      r['social_studies'],
-                      r['science'],
-                      r['re_religious_education'],
+                      row['literacy_i'],
+                      row['literacy_ii'],
+                      row['reading'],
+                      row['luganda'],
+                      row['mathematics'],
+                      row['english'],
+                      row['social_studies'],
+                      row['science'],
+                      row['re_religious_education'],
                   ]
                   valid_scores = [s for s in scores if s is not None]
                   avg = (
@@ -418,14 +430,14 @@ def lower():
                   )
 
                   table_data.append({
-                      'payment_code': r['payment_code'],
-                      'pupil_name': r['pupil_name'],
-                      'class_level': r['class_level'],
+                      'payment_code': row['payment_code'],
+                      'pupil_name': row['pupil_name'],
+                      'class_level': row['class_level'],
                       'average': round(avg, 1),
                   })
 
                 if table_data:
-                  columns = [
+                  ui_columns = [
                       {
                           'name': 'payment_code',
                           'label': 'Payment Code',
@@ -452,7 +464,7 @@ def lower():
                       },
                   ]
                   ui.table(
-                      columns=columns, rows=table_data, row_key='payment_code'
+                      columns=ui_columns, rows=table_data, row_key='payment_code'
                   ).classes(
                       'w-full border border-emerald-100 rounded-xl bg-white'
                   ).props('flat bordered dense')
@@ -460,6 +472,8 @@ def lower():
                   ui.label('📭 No records saved yet.').classes(
                       'text-stone-400 text-xs italic py-2'
                   )
+              finally:
+                conn.close()
             except Exception as e:
               ui.label(f'⚠️ Could not load table: {e}').classes(
                   'text-red-600 text-xs'
