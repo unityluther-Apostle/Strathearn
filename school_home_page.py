@@ -432,6 +432,10 @@ def refresh_table_data(class_filter='All', year_filter=''):
     if student_table is None:
         return
     try:
+        # CRITICAL FIX: Recalculate all aggregates, divisions, and ranks before fetching
+        # This ensures newly inserted students from the Entry Tab instantly display their metrics
+        update_all_ranks()
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
@@ -1627,35 +1631,41 @@ def home(client=None):
                         # Trigger once on open to populate initial values
                         on_score_change()
                         edit_dialog.open()
+                        
                     def save_student_edits():
                         try:
                             m_val = int(edit_maths.value or 0)
                             e_val = int(edit_english.value or 0)
                             sst_val = int(edit_sst.value or 0)
                             sci_val = int(edit_science.value or 0)
-                            total, avg, aggregates, division = calculate_student_metrics(m_val, e_val, sst_val, sci_val)
+                            
                             conn = get_db_connection()
                             cursor = conn.cursor()
                             try:
+                                # Save raw scores first
                                 cursor.execute('''
                                     UPDATE academic_records SET
                                         Name = ?, PaymentCode = ?, Class = ?, Term = ?, Year = ?,
-                                        Maths = ?, English = ?, SST = ?, Science = ?,
-                                        Total = ?, Average = ?, Aggregates = ?, Division = ?
+                                        Maths = ?, English = ?, SST = ?, Science = ?
                                     WHERE id = ? OR PaymentCode = ?
                                 ''', (
                                     edit_name.value, edit_payment_code.value, edit_class.value,
                                     edit_term.value, edit_year.value, m_val, e_val, sst_val, sci_val,
-                                    total, avg, aggregates, division, current_edit_id, current_edit_id
+                                    current_edit_id, current_edit_id
                                 ))
                                 conn.commit()
                             finally:
                                 conn.close()
+                            
+                            # CRITICAL FIX: Trigger full school rank/aggregate recalculation
+                            update_all_ranks()
+                            
                             edit_dialog.close()
                             refresh_table_data(class_select.value, year_input.value)
                             ui.notify("Student record and metrics updated successfully", type='positive')
                         except Exception as e:
                             ui.notify(f"Update failed: {e}", type='negative')
+                            
                     with ui.row().classes('w-full justify-end gap-2 mt-6'):
                         ui.button('Cancel', on_click=edit_dialog.close).props('flat color=grey')
                         ui.button('Save Changes', on_click=save_student_edits).props('color=primary')
@@ -1730,42 +1740,93 @@ def update_all_ranks():
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT * FROM academic_records")
+            cursor.execute("SELECT id, Class, Year, Term, Maths, English, SST, Science FROM academic_records")
             columns = [col[0] for col in cursor.description] if cursor.description else []
             rows = [dict(zip(columns, r)) for r in cursor.fetchall()]
             if not rows:
                 return
-            for r in rows:
-                m = r.get('Maths', 0) or 0
-                e = r.get('English', 0) or 0
-                sst = r.get('SST', 0) or 0
-                sci = r.get('Science', 0) or 0
-                total = m + e + sst + sci
-                avg = total / 4.0
-                def get_agg(score):
-                    if score >= 80: return 1
-                    elif score >= 75: return 2
-                    elif score >= 70: return 3
-                    elif score >= 60: return 4
-                    elif score >= 50: return 5
-                    elif score >= 45: return 6
-                    elif score >= 40: return 7
-                    elif score >= 35: return 8
-                    else: return 9
-                m_agg = get_agg(m)
-                e_agg = get_agg(e)
-                sst_agg = get_agg(sst)
-                sci_agg = get_agg(sci)
-                aggregates = m_agg + e_agg + sst_agg + sci_agg
-                if aggregates <= 12: division = "Div 1"
-                elif aggregates <= 24: division = "Div 2"
-                elif aggregates <= 29: division = "Div 3"
-                elif aggregates <= 34: division = "Div 4"
-                else: division = "Div U"
-                # Fixed: removed undefined 'Rank' variable from original code
+            
+            df = pl.DataFrame(rows)
+            
+            # Fill nulls for subjects
+            for col in ['Maths', 'English', 'SST', 'Science']:
+                if col in df.columns:
+                    df = df.with_columns(pl.col(col).fill_null(0).cast(pl.Int64))
+                else:
+                    df = df.with_columns(pl.lit(0).alias(col))
+                    
+            # Calculate Total and Average
+            df = df.with_columns(
+                (pl.col('Maths') + pl.col('English') + pl.col('SST') + pl.col('Science')).alias('Total')
+            )
+            df = df.with_columns(
+                (pl.col('Total') / 4.0).alias('Average')
+            )
+            
+            # Vectorized grade calculation (UNEB Grading)
+            def get_agg_expr(col_name):
+                return (
+                    pl.when(pl.col(col_name) >= 80).then(1)
+                    .when(pl.col(col_name) >= 75).then(2)
+                    .when(pl.col(col_name) >= 70).then(3)
+                    .when(pl.col(col_name) >= 60).then(4)
+                    .when(pl.col(col_name) >= 50).then(5)
+                    .when(pl.col(col_name) >= 45).then(6)
+                    .when(pl.col(col_name) >= 40).then(7)
+                    .when(pl.col(col_name) >= 35).then(8)
+                    .otherwise(9)
+                )
+
+            df = df.with_columns([
+                get_agg_expr('Maths').alias('M_Agg'),
+                get_agg_expr('English').alias('E_Agg'),
+                get_agg_expr('SST').alias('SST_Agg'),
+                get_agg_expr('Science').alias('Sci_Agg')
+            ])
+            
+            df = df.with_columns(
+                (pl.col('M_Agg') + pl.col('E_Agg') + pl.col('SST_Agg') + pl.col('Sci_Agg')).alias('Aggregates')
+            )
+            
+            # Division logic
+            df = df.with_columns(
+                pl.when((pl.col('E_Agg') == 9) & (pl.col('M_Agg') == 9)).then(pl.lit("Div U"))
+                .when(pl.col('Aggregates') <= 12).then(pl.lit("Div 1"))
+                .when(pl.col('Aggregates') <= 23).then(pl.lit("Div 2"))
+                .when(pl.col('Aggregates') <= 29).then(pl.lit("Div 3"))
+                .when(pl.col('Aggregates') <= 34).then(pl.lit("Div 4"))
+                .otherwise(pl.lit("Div U"))
+                .alias('Division')
+            )
+            
+            # Rank calculation (grouped by Class, Year, Term)
+            group_cols = [col for col in ['Class', 'Year', 'Term'] if col in df.columns]
+            
+            # Fill nulls in group cols to avoid polars grouping issues
+            for col in group_cols:
+                df = df.with_columns(pl.col(col).fill_null("Unknown"))
+            
+            if group_cols:
+                # Rank by Aggregates ascending (lower aggregates = better rank)
+                df = df.with_columns(
+                    pl.col('Aggregates').rank(method="dense", descending=False).over(group_cols).alias('Rank')
+                )
+            else:
+                df = df.with_columns(
+                    pl.col('Aggregates').rank(method="dense", descending=False).alias('Rank')
+                )
+                
+            # Update database
+            updated_rows = df.select(['id', 'Total', 'Average', 'Aggregates', 'Division', 'Rank']).to_dicts()
+            for row in updated_rows:
                 cursor.execute('''
-                    UPDATE academic_records SET Total = ?, Average = ?, Aggregates = ?, Division = ? WHERE id = ?
-                ''', (total, avg, aggregates, division, r['id']))
+                    UPDATE academic_records 
+                    SET Total = ?, Average = ?, Aggregates = ?, Division = ?, Rank = ? 
+                    WHERE id = ?
+                ''', (
+                    row['Total'], row['Average'], row['Aggregates'], 
+                    row['Division'], str(int(row['Rank'])), row['id']
+                ))
             conn.commit()
         finally:
             conn.close()
