@@ -515,6 +515,7 @@ def login_page():
                                     'bg-[#14532d] shadow-lg'
                                 ):
                                     #ui.icon('school').classes('text-3xl text-[#f59e0b]')
+                                    pass  # Added 'pass' to fix IndentationError caused by empty block
 
                                 ui.label('Starthearn Portal').classes(
                                     'text-2xl font-extrabold text-[#14532d] text-center'
