@@ -16,8 +16,6 @@ ADMIN_ACCOUNTS = {
     "Principal": "AdminPass2026",
     "Headmaster": "Secret123",
 
-    # You can remove this line if you do not need admin_account
-    "admin_account": "password1234",
 }
 
 # Used for case-insensitive admin login.
@@ -516,13 +514,13 @@ def login_page():
                                     'mb-4 flex h-16 w-16 items-center justify-center rounded-[22px] '
                                     'bg-[#14532d] shadow-lg'
                                 ):
-                                    ui.icon('school').classes('text-3xl text-[#f59e0b]')
+                                    #ui.icon('school').classes('text-3xl text-[#f59e0b]')
 
-                                ui.label('School Portal').classes(
+                                ui.label('Starthearn Portal').classes(
                                     'text-2xl font-extrabold text-[#14532d] text-center'
                                 )
 
-                                ui.label('Bright, simple access for teachers').classes(
+                                ui.label('Strive For Excel').classes(
                                     'text-sm text-slate-500 text-center mt-1'
                                 )
 
@@ -532,7 +530,7 @@ def login_page():
                                     'w-fit items-center gap-2 rounded-full border border-[#f59e0b]/40 '
                                     'bg-[#fffbeb] px-4 py-2'
                                 ):
-                                    ui.icon('wb_sunny').classes('text-lg text-[#f59e0b]')
+                                    #ui.icon('wb_sunny').classes('text-lg text-[#f59e0b]')
                                     ui.label('Primary teacher friendly login').classes(
                                         'text-[10px] font-extrabold uppercase tracking-[0.22em] '
                                         'text-[#14532d]'
