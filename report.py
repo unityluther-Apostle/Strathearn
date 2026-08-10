@@ -139,11 +139,9 @@ def report(row_data):
 
   config = {
       "school_name": "STRATHEARN PRIMARY SCHOOL MASANAFU",
-      "motto": "Knowledge for Service",
+      "motto": "Strive to Excel ",
       "contacts": (
-          "P.O. Box 1234, Kampala | Tel: 0770 000 000 | Email:"
-          " info@strathearn.ac.ug"
-      ),
+          "Masanafu Bukulungi Zone (Katalemwa Road)  | Tel: 0772 432403 & 0754109858  | Email:"  " info@strathearn.ac.ug"  ),
       "badge_filename": "badge.jpeg",
       "issue_date": today,
       "next_term_begins": "07 September 2026",
