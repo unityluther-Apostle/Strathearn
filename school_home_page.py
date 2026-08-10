@@ -1288,7 +1288,7 @@ def home(client=None):
                 with ui.row().classes('items-center gap-4'):
                     ui.icon('school', color='#0d9488').classes('text-3xl p-3 bg-teal-50 rounded-2xl shadow-sm text-teal-700 border border-teal-200')
                     with ui.column().classes('gap-0'):
-                        ui.label('Jalie Nursery & Primary School').classes('text-2xl font-black tracking-tight text-slate-900')
+                        ui.label('Strathearn Primary School').classes('text-2xl font-black tracking-tight text-slate-900')
                         ui.label('Academic Information Management').classes('text-[11px] font-bold text-teal-700 tracking-wide uppercase')
                     ui.add_head_html('''
                         <style>
