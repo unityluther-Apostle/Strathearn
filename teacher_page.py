@@ -988,7 +988,7 @@ def teacher():
             ):
                 ui.icon('school', size='6rem', color='emerald').classes('absolute -right-8 -bottom-8 opacity-10')
                 ui.icon('auto_stories', size='6rem', color='teal').classes('absolute -left-8 -top-8 opacity-10')
-                ui.label("Teacher's Dialogue").classes('text-3xl md:text-5xl font-black text-white tracking-tight')
+                ui.label("Strathearn Teacher's Dialogue").classes('text-3xl md:text-5xl font-black text-white tracking-tight')
                 ui.label('School Report & Academic Management System').classes('text-emerald-200 text-sm md:text-base font-medium mt-1')
             with ui.card().classes(
                 'w-full p-6 bg-gradient-to-r from-emerald-100/80 via-teal-50 to-white'
